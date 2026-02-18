@@ -1,0 +1,156 @@
+!DOCTYPE html
+html lang=en
+head
+    meta charset=UTF-8
+    meta name=viewport content=width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
+    link rel=icon href=httpsfav.farm🎨 
+    titleZac's Tap-to-Colortitle
+    style
+        root { --bg #fdfdfd; --ui #ffffff; --accent #4a90e2; }
+        body { 
+            margin 0; display flex; flex-direction column; align-items center; 
+            background var(--bg); font-family -apple-system, sans-serif; overflow-x hidden;
+        }
+        #nav { 
+            width 100%; padding 15px 0; text-align center; background var(--ui); 
+            box-shadow 0 2px 10px rgba(0,0,0,0.05); position sticky; top 0; z-index 100;
+        }
+        select { 
+            padding 12px; font-size 16px; border-radius 12px; border 1px solid #ddd; 
+            width 85%; max-width 400px; background #fff;
+        }
+        #game-area { 
+            display flex; flex-direction column; align-items center; padding 20px 0; width 100%;
+        }
+        canvas { 
+            border-radius 15px; background #fff; box-shadow 0 10px 40px rgba(0,0,0,0.1); 
+            max-width 95vw; max-height 65vh; touch-action none;
+        }
+        #palette { 
+            display flex; gap 12px; padding 25px; flex-wrap wrap; justify-content center; max-width 600px; 
+        }
+        .swatch { 
+            width 50px; height 50px; border-radius 50%; border 3px solid #fff; 
+            box-shadow 0 2px 6px rgba(0,0,0,0.1); transition transform 0.1s; cursor pointer;
+        }
+        .swatch.selected { border-color #333; transform scale(1.2); box-shadow 0 4px 15px rgba(0,0,0,0.2); }
+        .btn-save {
+            background var(--accent); color white; border none; padding 12px 24px;
+            border-radius 10px; font-weight bold; cursor pointer; margin-bottom 20px;
+        }
+        .hidden { display none; }
+        #loader { display none; position absolute; top 50%; font-weight bold; color #666; }
+    style
+head
+body
+
+    div id=nav
+        select id=imageSelector
+            option value=-- Choose Your Image --option
+        select
+    div
+
+    div id=game-area
+        div id=loaderProcessing...div
+        canvas id=gameCanvas class=hiddencanvas
+        div id=palettediv
+        button id=saveBtn class=btn-save hidden onclick=downloadImage()Save Masterpiecebutton
+    div
+
+    script
+        const selector = document.getElementById('imageSelector');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { alpha false });
+        const paletteDiv = document.getElementById('palette');
+        const saveBtn = document.getElementById('saveBtn');
+        const loader = document.getElementById('loader');
+
+        let currentGameData = null;
+        let selectedColor = null;
+        let userPaintMap = new Map();
+
+         1. Fetch manifest from ..image_data
+        fetch('..image_datamanifest.json')
+            .then(res = res.json())
+            .then(files = {
+                files.forEach(file = {
+                    const opt = document.createElement('option');
+                    opt.value = file;
+                    opt.textContent = file.replace('_tapdata.json', '').replace(_g, ' ');
+                    selector.appendChild(opt);
+                });
+            });
+
+         2. Load game data
+        selector.onchange = async (e) = {
+            if (!e.target.value) return;
+            loader.style.display = 'block';
+            
+            const response = await fetch(`..image_data${e.target.value}`);
+            currentGameData = await response.json();
+            
+            userPaintMap.clear();
+            setupGame();
+            loader.style.display = 'none';
+        };
+
+        function setupGame() {
+            canvas.width = currentGameData.width;
+            canvas.height = currentGameData.height;
+            canvas.classList.remove('hidden');
+            saveBtn.classList.remove('hidden');
+            
+            paletteDiv.innerHTML = '';
+            currentGameData.palette.forEach((rgb) = {
+                const s = document.createElement('div');
+                s.className = 'swatch';
+                s.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+                s.onclick = () = {
+                    document.querySelectorAll('.swatch').forEach(el = el.classList.remove('selected'));
+                    s.classList.add('selected');
+                    selectedColor = rgb;
+                };
+                paletteDiv.appendChild(s);
+            });
+            render();
+        }
+
+        function render() {
+            if (!currentGameData) return;
+            const imgData = ctx.createImageData(canvas.width, canvas.height);
+            const map = currentGameData.map;
+
+            for (let i = 0; i  map.length; i++) {
+                const regionId = map[i];
+                let color = userPaintMap.get(regionId)  [245, 245, 245]; 
+                const p = i  4;
+                imgData.data[p] = color[0];
+                imgData.data[p+1] = color[1];
+                imgData.data[p+2] = color[2];
+                imgData.data[p+3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        canvas.addEventListener('pointerdown', (e) = {
+            if (!selectedColor  !currentGameData) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left)  (canvas.width  rect.width));
+            const y = Math.floor((e.clientY - rect.top)  (canvas.height  rect.height));
+            const index = y  canvas.width + x;
+            const regionId = currentGameData.map[index];
+            if (regionId !== undefined) {
+                userPaintMap.set(regionId, selectedColor);
+                render();
+            }
+        });
+
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.download = 'my-painting.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+    script
+body
+html
