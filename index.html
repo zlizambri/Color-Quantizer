@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PrismatiCore</title>
+    <title>PrismatiCore Pro</title>
     <style>
         :root { --bg: #f0f2f5; --card: #ffffff; --accent: #007aff; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -15,12 +15,14 @@
         }
         
         #header { 
-            height: 70px; padding: 0 15px; background: var(--card); 
-            display: flex; justify-content: space-between; align-items: center; 
+            height: auto; min-height: 80px; padding: 10px 15px; background: var(--card); 
+            display: flex; flex-direction: column; gap: 8px;
             border-bottom: 1px solid #ddd; z-index: 100; flex-shrink: 0;
             padding-top: env(safe-area-inset-top);
         }
 
+        .controls-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        
         #viewport { 
             flex: 1; position: relative; overflow: hidden; 
             background: #d1d8e0; display: flex; align-items: center; justify-content: center;
@@ -33,37 +35,49 @@
         }
 
         #palette { 
-            height: 110px; display: flex; gap: 12px; padding: 15px; 
+            height: 120px; display: flex; gap: 12px; padding: 15px; 
             background: var(--card); border-top: 1px solid #ddd; 
             overflow-x: auto; flex-shrink: 0; align-items: center; 
             justify-content: flex-start; z-index: 100;
             padding-bottom: calc(10px + env(safe-area-inset-bottom));
         }
         
+        .swatch-container { position: relative; flex-shrink: 0; text-align: center; }
         .swatch { 
             min-width: 65px; height: 65px; border-radius: 50%; 
             border: 4px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-            flex-shrink: 0; transition: transform 0.2s;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 18px; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+            transition: transform 0.2s;
         }
         .swatch.active { border-color: #333; transform: scale(1.1) translateY(-5px); }
 
+        .slider-box { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: bold; color: #555; }
+        input[type=range] { width: 100px; }
+
         button#hintBtn { 
-            padding: 10px 20px; border-radius: 20px; border: none; 
+            padding: 8px 16px; border-radius: 20px; border: none; 
             background: var(--accent); color: white; font-weight: 600;
         }
         button#hintBtn:disabled { background: #ccc; opacity: 0.5; }
 
-        select { 
-            height: 40px; border-radius: 8px; border: 1px solid #ccc; 
-            font-size: 16px; background: #fff; max-width: 60%;
-        }
+        select { height: 35px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; background: #fff; flex: 1; margin-right: 10px; }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <select id="imageSelector"><option value="">-- Choose Image --</option></select>
-    <button id="hintBtn" onclick="giveHint()" disabled>Hint</button>
+    <div class="controls-row">
+        <select id="imageSelector"><option value="">-- Choose Image --</option></select>
+        <button id="hintBtn" onclick="giveHint()" disabled>Hint</button>
+    </div>
+    <div class="controls-row">
+        <div class="slider-box">
+            <span>Tap Size:</span>
+            <input type="range" id="radiusSlider" min="1" max="50" value="15">
+        </div>
+        <div id="status-bar" style="font-size: 11px; color: #999;">Ready</div>
+    </div>
 </div>
 
 <div id="viewport">
@@ -78,29 +92,25 @@
     const ctx = canvas.getContext('2d', { alpha: false });
     const paletteDiv = document.getElementById('palette');
     const hintBtn = document.getElementById('hintBtn');
+    const radiusSlider = document.getElementById('radiusSlider');
 
     let gameData = null;
     let activeColorIdx = null;
     let paintedShapes = new Set();
     let hintShapeId = null;
-
-    // Zoom/Pan State
     let scale = 1, lastScale = 1, posX = 0, posY = 0, lastPosX = 0, lastPosY = 0, startDist = 0;
 
-    // 1. LOAD MANIFEST IMMEDIATELY
     document.addEventListener('DOMContentLoaded', () => {
         fetch('image_data/manifest.json')
             .then(res => res.json())
             .then(files => {
-                selector.innerHTML = '<option value="">-- Choose Image --</option>';
                 files.forEach(file => {
                     const opt = document.createElement('option');
                     opt.value = file;
                     opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
                     selector.appendChild(opt);
                 });
-            })
-            .catch(err => console.error("Could not load manifest. Check folder structure.", err));
+            });
     });
 
     selector.onchange = async (e) => {
@@ -111,10 +121,9 @@
         activeColorIdx = null;
         hintBtn.disabled = true;
         
-        // Auto-fit canvas to viewport
-        const vRect = document.getElementById('viewport').getBoundingClientRect();
         canvas.width = gameData.width;
         canvas.height = gameData.height;
+        const vRect = document.getElementById('viewport').getBoundingClientRect();
         scale = Math.min(vRect.width / canvas.width, vRect.height / canvas.height) * 0.85;
         posX = 0; posY = 0;
         
@@ -133,16 +142,22 @@
             gameData.shapeToColor.forEach((c, i) => { if (c === colorIdx && paintedShapes.has(i + 1)) found++; });
 
             if (found < total) {
+                const container = document.createElement('div');
+                container.className = 'swatch-container';
+                
                 const swatch = document.createElement('div');
                 swatch.className = 'swatch' + (activeColorIdx === colorIdx ? ' active' : '');
                 swatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+                swatch.innerText = colorIdx; // Numbering the colors
+                
                 swatch.onclick = () => { 
                     activeColorIdx = colorIdx; 
                     hintBtn.disabled = false;
                     renderPalette(); 
                     render(); 
                 };
-                paletteDiv.appendChild(swatch);
+                container.appendChild(swatch);
+                paletteDiv.appendChild(container);
             }
         });
     }
@@ -169,7 +184,6 @@
 
     function updateTransform() { canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
 
-    // Touch Handling
     let isMoving = false, touches = [], startX, startY;
     canvas.addEventListener('pointerdown', (e) => {
         touches.push(e);
@@ -202,11 +216,36 @@
     function handleTap(e) {
         if (!gameData || !activeColorIdx) return;
         const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
-        const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
-        const sid = gameData.map[y * gameData.width + x];
-        if (sid > 0 && gameData.shapeToColor[sid - 1] === activeColorIdx) {
-            paintedShapes.add(sid); renderPalette(); render();
+        const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        const radius = parseInt(radiusSlider.value);
+        let foundAny = false;
+
+        // Check a bounding box around the click for speed, then verify distance
+        const startX = Math.max(0, Math.floor(clickX - radius));
+        const endX = Math.min(gameData.width - 1, Math.ceil(clickX + radius));
+        const startY = Math.max(0, Math.floor(clickY - radius));
+        const endY = Math.min(gameData.height - 1, Math.ceil(clickY + radius));
+
+        for (let y = startY; y <= endY; y++) {
+            for (let x = startX; x <= endX; x++) {
+                const dist = Math.sqrt((x - clickX)**2 + (y - clickY)**2);
+                if (dist <= radius) {
+                    const sid = gameData.map[y * gameData.width + x];
+                    if (sid > 0 && gameData.shapeToColor[sid - 1] === activeColorIdx) {
+                        if (!paintedShapes.has(sid)) {
+                            paintedShapes.add(sid);
+                            foundAny = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (foundAny) {
+            renderPalette();
+            render();
         }
     }
 
