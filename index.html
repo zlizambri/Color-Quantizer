@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PrismatiCore Pro</title>
+    <title>PrismatiCore Master</title>
     <style>
-        :root { --bg: #f0f2f5; --card: #ffffff; --accent: #007aff; }
+        :root { --bg: #f0f2f5; --card: #ffffff; --accent: #007aff; --danger: #ff3b30; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body { 
@@ -15,13 +15,13 @@
         }
         
         #header { 
-            height: auto; min-height: 85px; padding: 10px 15px; background: var(--card); 
+            height: auto; min-height: 90px; padding: 10px 15px; background: var(--card); 
             display: flex; flex-direction: column; gap: 8px;
             border-bottom: 1px solid #ddd; z-index: 100; flex-shrink: 0;
             padding-top: env(safe-area-inset-top);
         }
 
-        .controls-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .controls-row { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 10px; }
         
         #viewport { 
             flex: 1; position: relative; overflow: hidden; 
@@ -35,7 +35,7 @@
         }
 
         #palette { 
-            height: 125px; display: flex; gap: 14px; padding: 15px; 
+            height: 130px; display: flex; gap: 14px; padding: 15px; 
             background: var(--card); border-top: 1px solid #ddd; 
             overflow-x: auto; flex-shrink: 0; align-items: center; 
             justify-content: flex-start; z-index: 100;
@@ -52,16 +52,19 @@
         }
         .swatch.active { border-color: #333; transform: scale(1.15) translateY(-8px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); }
 
-        .slider-box { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: bold; color: #444; }
-        input[type=range] { width: 110px; }
+        .slider-box { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; color: #444; }
+        input[type=range] { width: 90px; }
 
-        button#hintBtn { 
-            padding: 8px 18px; border-radius: 20px; border: none; 
-            background: var(--accent); color: white; font-weight: 700; font-size: 14px;
+        .btn-group { display: flex; gap: 8px; }
+        button { 
+            padding: 8px 14px; border-radius: 20px; border: none; 
+            font-weight: 700; font-size: 13px; cursor: pointer;
         }
-        button#hintBtn:disabled { background: #ccc; opacity: 0.5; }
+        #hintBtn { background: var(--accent); color: white; }
+        #resetBtn { background: #eee; color: #666; font-size: 18px; padding: 4px 12px; }
+        button:disabled { background: #ccc !important; opacity: 0.5; }
 
-        select { height: 38px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; background: #fff; flex: 1; margin-right: 12px; }
+        select { height: 38px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; background: #fff; flex: 1; }
     </style>
 </head>
 <body>
@@ -69,7 +72,10 @@
 <div id="header">
     <div class="controls-row">
         <select id="imageSelector"><option value="">-- Choose Image --</option></select>
-        <button id="hintBtn" onclick="giveHint()" disabled>Need Help?</button>
+        <div class="btn-group">
+            <button id="resetBtn" onclick="resetProgress()" title="Restart Puzzle">↺</button>
+            <button id="hintBtn" onclick="giveHint()" disabled>Hint</button>
+        </div>
     </div>
     <div class="controls-row">
         <div class="slider-box">
@@ -101,6 +107,7 @@
     let hintShapeId = null;
     let scale = 1, lastScale = 1, posX = 0, posY = 0, lastPosX = 0, lastPosY = 0, startDist = 0;
 
+    // Load Puzzle List
     document.addEventListener('DOMContentLoaded', () => {
         fetch('image_data/manifest.json')
             .then(res => res.json())
@@ -116,9 +123,20 @@
 
     selector.onchange = async (e) => {
         if (!e.target.value) return;
-        const res = await fetch(`image_data/${e.target.value}`);
+        const filename = e.target.value;
+        const res = await fetch(`image_data/${filename}`);
         gameData = await res.json();
-        paintedShapes.clear();
+        
+        // --- LOAD PROGRESS ---
+        const saved = localStorage.getItem('prismasave_' + filename);
+        if (saved) {
+            paintedShapes = new Set(JSON.parse(saved));
+            statusBar.innerText = "Resumed progress!";
+        } else {
+            paintedShapes.clear();
+            statusBar.innerText = "Starting new!";
+        }
+        
         activeColorIdx = null;
         hintBtn.disabled = true;
         
@@ -131,8 +149,25 @@
         updateTransform();
         renderPalette();
         render();
-        statusBar.innerText = "Image Loaded!";
     };
+
+    function saveProgress() {
+        if (!gameData) return;
+        localStorage.setItem('prismasave_' + selector.value, JSON.stringify([...paintedShapes]));
+    }
+
+    function resetProgress() {
+        if (!gameData) return;
+        if (confirm("Start this masterpiece over from the beginning?")) {
+            paintedShapes.clear();
+            localStorage.removeItem('prismasave_' + selector.value);
+            activeColorIdx = null;
+            hintBtn.disabled = true;
+            renderPalette();
+            render();
+            statusBar.innerText = "Puzzle Reset.";
+        }
+    }
 
     function renderPalette() {
         paletteDiv.innerHTML = '';
@@ -155,6 +190,9 @@
                 paletteDiv.appendChild(container);
             }
         });
+        if (paletteDiv.innerHTML === "" && paintedShapes.size > 0) {
+            statusBar.innerText = "🏆 100% COMPLETE! 🏆";
+        }
     }
 
     function updateStatus() {
@@ -162,7 +200,7 @@
         const totalOfColor = gameData.shapeToColor.filter(c => c === activeColorIdx).length;
         let foundOfColor = 0;
         gameData.shapeToColor.forEach((c, i) => { if (c === activeColorIdx && paintedShapes.has(i + 1)) foundOfColor++; });
-        statusBar.innerText = `${totalOfColor - foundOfColor} shapes left for #${activeColorIdx}`;
+        statusBar.innerText = `${totalOfColor - foundOfColor} left for color #${activeColorIdx}`;
     }
 
     function render() {
@@ -178,11 +216,9 @@
             else if (paintedShapes.has(sid)) [r, g, b] = palette[cid - 1];
             else if (sid === hintShapeId) [r, g, b] = [255, 0, 0];
             else if (activeColorIdx === cid) {
-                // --- HIGH CONTRAST HIGHLIGHT ---
-                const x = i % width;
-                const y = Math.floor(i / width);
+                const x = i % width; const y = Math.floor(i / width);
                 const pat = (Math.floor(x/10) + Math.floor(y/10)) % 2 === 0;
-                [r, g, b] = pat ? [255, 255, 255] : [100, 116, 139]; // Slate Blue contrast
+                [r, g, b] = pat ? [255, 255, 255] : [100, 116, 139]; 
             } else [r, g, b] = [240, 240, 240];
             
             const p = i * 4; imgData.data[p]=r; imgData.data[p+1]=g; imgData.data[p+2]=b; imgData.data[p+3]=255;
@@ -192,6 +228,7 @@
 
     function updateTransform() { canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
 
+    // Touch/Interaction
     let isMoving = false, touches = [], startX, startY;
     canvas.addEventListener('pointerdown', (e) => {
         touches.push(e);
@@ -242,7 +279,12 @@
                 }
             }
         }
-        if (foundAny) { updateStatus(); renderPalette(); render(); }
+        if (foundAny) { 
+            saveProgress(); // AUTO-SAVE ON TAP
+            updateStatus(); 
+            renderPalette(); 
+            render(); 
+        }
     }
 
     function giveHint() {
