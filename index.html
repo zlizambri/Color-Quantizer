@@ -63,10 +63,9 @@
         const saveBtn = document.getElementById('saveBtn');
 
         let currentGameData = null;
-        let selectedColor = null;
+        let selectedColorIdx = null; // Store the index (1 to NC)
         let userPaintMap = new Map();
 
-        // 1. Fetch manifest from image_data/
         fetch('image_data/manifest.json')
             .then(res => res.json())
             .then(files => {
@@ -76,17 +75,14 @@
                     opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
                     selector.appendChild(opt);
                 });
-            })
-            .catch(err => console.error("Manifest load error:", err));
+            });
 
-        // 2. Load game data
         selector.onchange = async (e) => {
             if (!e.target.value) return;
-            
             const response = await fetch(`image_data/${e.target.value}`);
             currentGameData = await response.json();
-            
             userPaintMap.clear();
+            selectedColorIdx = null;
             setupGame();
         };
 
@@ -97,14 +93,15 @@
             saveBtn.classList.remove('hidden');
             
             paletteDiv.innerHTML = '';
-            currentGameData.palette.forEach((rgb) => {
+            currentGameData.palette.forEach((rgb, idx) => {
                 const s = document.createElement('div');
                 s.className = 'swatch';
                 s.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
                 s.onclick = () => {
                     document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
                     s.classList.add('selected');
-                    selectedColor = rgb;
+                    selectedColorIdx = idx + 1; // Palette is 0-indexed, Regions are 1-indexed
+                    render();
                 };
                 paletteDiv.appendChild(s);
             });
@@ -115,28 +112,49 @@
             if (!currentGameData) return;
             const imgData = ctx.createImageData(canvas.width, canvas.height);
             const map = currentGameData.map;
+            const width = canvas.width;
 
             for (let i = 0; i < map.length; i++) {
                 const regionId = map[i];
-                let color = userPaintMap.get(regionId) || [245, 245, 245]; 
+                let r, g, b;
+
+                if (userPaintMap.has(regionId)) {
+                    // 1. User has already painted this
+                    [r, g, b] = userPaintMap.get(regionId);
+                } else if (selectedColorIdx !== null && regionId === selectedColorIdx) {
+                    // 2. HIGHLIGHT LOGIC: Checkerboard pattern
+                    const x = i % width;
+                    const y = Math.floor(i / width);
+                    const checkerSize = 8; // Size of the squares
+                    const isWhite = (Math.floor(x / checkerSize) + Math.floor(y / checkerSize)) % 2 === 0;
+                    r = g = b = isWhite ? 255 : 200; // White and Gray
+                } else {
+                    // 3. Default unpainted state
+                    r = g = b = 245; 
+                }
+
                 const p = i * 4;
-                imgData.data[p] = color[0];
-                imgData.data[p+1] = color[1];
-                imgData.data[p+2] = color[2];
+                imgData.data[p] = r;
+                imgData.data[p+1] = g;
+                imgData.data[p+2] = b;
                 imgData.data[p+3] = 255;
             }
             ctx.putImageData(imgData, 0, 0);
         }
 
         canvas.addEventListener('pointerdown', (e) => {
-            if (!selectedColor || !currentGameData) return;
+            if (selectedColorIdx === null || !currentGameData) return;
             const rect = canvas.getBoundingClientRect();
             const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
             const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
             const index = y * canvas.width + x;
             const regionId = currentGameData.map[index];
-            if (regionId !== undefined) {
-                userPaintMap.set(regionId, selectedColor);
+
+            // Only allow painting if the user clicked the correct color region
+            // (You can remove the "regionId === selectedColorIdx" check if you want 
+            // her to be able to paint any color anywhere).
+            if (regionId !== undefined && regionId === selectedColorIdx) {
+                userPaintMap.set(regionId, currentGameData.palette[selectedColorIdx - 1]);
                 render();
             }
         });
