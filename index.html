@@ -3,73 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PrismatiCore</title>
+    <link rel="icon" href="https://fav.farm/🎨" />
+    <title>PrismatiCore Tap-to-Color</title>
     <style>
-        body { margin: 0; background: #eee; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        #nav { padding: 10px; background: white; text-align: center; border-bottom: 1px solid #ccc; }
-        #viewport { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        canvas { background: white; box-shadow: 0 5px 15px rgba(0,0,0,0.2); max-width: 95%; max-height: 80%; touch-action: none; }
-        #palette { display: flex; gap: 10px; padding: 15px; background: white; overflow-x: auto; border-top: 1px solid #ccc; }
-        .swatch { min-width: 50px; height: 50px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        :root { --bg: #fdfdfd; --ui: #ffffff; --accent: #4a90e2; }
+        body { margin: 0; background: var(--bg); font-family: -apple-system, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #nav { padding: 10px; text-align: center; background: var(--ui); box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 100; }
+        select { padding: 12px; font-size: 16px; border-radius: 12px; border: 1px solid #ddd; width: 85%; }
+        #viewport { flex: 1; overflow: hidden; position: relative; touch-action: none; display: flex; align-items: center; justify-content: center; background: #eee; }
+        canvas { background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.1); cursor: crosshair; image-rendering: pixelated; transform-origin: center; transition: filter 0.3s; }
+        #palette { display: flex; gap: 10px; padding: 15px; background: var(--ui); overflow-x: auto; border-top: 1px solid #eee; }
+        .swatch { min-width: 50px; height: 50px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); flex-shrink: 0; }
         .swatch.selected { border-color: #333; transform: scale(1.1); }
-        #status { padding: 5px; text-align: center; background: #fff; font-size: 14px; color: #666; }
+        #status-bar { padding: 8px; text-align: center; background: #fff; font-weight: bold; color: #555; border-top: 1px solid #eee; }
+        .hidden { display: none; }
+        
+        /* Confetti Effect */
+        #confetti-canvas { position: fixed; top: 0; left: 0; pointer-events: none; z-index: 1000; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
 
+<canvas id="confetti-canvas"></canvas>
+
 <div id="nav">
-    <select id="imageSelector"><option value="">-- Select Image --</option></select>
+    <select id="imageSelector"><option value="">-- Choose Image --</option></select>
 </div>
 
 <div id="viewport">
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="gameCanvas" class="hidden"></canvas>
 </div>
 
-<div id="status">Pick a color!</div>
+<div id="status-bar">Select a color!</div>
 <div id="palette"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 <script>
     const selector = document.getElementById('imageSelector');
     const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     const paletteDiv = document.getElementById('palette');
-    const status = document.getElementById('status');
-
+    const statusBar = document.getElementById('status-bar');
+    
     let currentGameData = null;
     let selectedColorIdx = null;
     let paintedShapes = new Set();
+    let scale = 1, posX = 0, posY = 0;
 
-    // 1. Get List
-    fetch('image_data/manifest.json')
-        .then(res => res.json())
-        .then(data => {
-            data.forEach(file => {
-                const opt = document.createElement('option');
-                opt.value = file;
-                opt.textContent = file.replace('_tapdata.json', '');
-                selector.appendChild(opt);
-            });
-        })
-        .catch(err => console.error("Manifest error:", err));
+    fetch('image_data/manifest.json').then(res => res.json()).then(files => {
+        files.forEach(file => {
+            const opt = document.createElement('option');
+            opt.value = file;
+            opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
+            selector.appendChild(opt);
+        });
+    });
 
-    // 2. Load Selection
     selector.onchange = async (e) => {
         if (!e.target.value) return;
-        try {
-            const res = await fetch(`image_data/${e.target.value}`);
-            currentGameData = await res.json();
-            paintedShapes.clear();
-            selectedColorIdx = null;
-            initGame();
-        } catch (err) {
-            console.error("Load error:", err);
-        }
+        const res = await fetch(`image_data/${e.target.value}`);
+        currentGameData = await res.json();
+        paintedShapes.clear();
+        selectedColorIdx = null;
+        scale = 1; posX = 0; posY = 0;
+        setupGame();
     };
 
-    function initGame() {
+    function setupGame() {
         canvas.width = currentGameData.width;
         canvas.height = currentGameData.height;
-        
+        canvas.classList.remove('hidden');
         paletteDiv.innerHTML = '';
         currentGameData.palette.forEach((rgb, idx) => {
             const s = document.createElement('div');
@@ -79,53 +82,101 @@
                 document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
                 s.classList.add('selected');
                 selectedColorIdx = idx + 1;
-                draw();
+                updateStatus();
+                render();
             };
             paletteDiv.appendChild(s);
         });
-        draw();
+        updateTransform();
+        render();
     }
 
-    function draw() {
+    function render() {
         if (!currentGameData) return;
-        const { width, height, map, shapeToColor, palette } = currentGameData;
-        const imgData = ctx.createImageData(width, height);
+        const width = currentGameData.width;
+        const imgData = ctx.createImageData(width, currentGameData.height);
+        const map = currentGameData.map;
+        const stc = currentGameData.shapeToColor;
 
         for (let i = 0; i < map.length; i++) {
             const id = map[i];
-            const colorIdx = shapeToColor[id - 1];
-            let r = 248, g = 248, b = 248; // Default Light Gray
-
-            if (id === 0) {
-                r = g = b = 255; // Pure white background
-            } else if (paintedShapes.has(id)) {
-                [r, g, b] = palette[colorIdx - 1];
-            } else if (selectedColorIdx === colorIdx) {
-                // Hint pattern for the current selected color
+            let r, g, b;
+            if (paintedShapes.has(id)) {
+                const cIdx = stc[id - 1];
+                [r, g, b] = currentGameData.palette[cIdx - 1];
+            } else if (selectedColorIdx && stc[id-1] === selectedColorIdx) {
                 const x = i % width;
                 const y = Math.floor(i / width);
-                const pattern = (Math.floor(x/10) + Math.floor(y/10)) % 2 === 0;
-                r = g = b = pattern ? 255 : 235;
+                const isWhite = (Math.floor(x/10) + Math.floor(y/10)) % 2 === 0;
+                r = g = b = isWhite ? 255 : 225;
+            } else {
+                r = g = b = 245;
             }
-
             const p = i * 4;
             imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
         }
         ctx.putImageData(imgData, 0, 0);
     }
 
-    canvas.addEventListener('pointerdown', (e) => {
+    function updateStatus() {
+        if (!selectedColorIdx) return;
+        const totalShapes = currentGameData.shapeToColor.length;
+        const shapesForColor = currentGameData.shapeToColor.filter(c => c === selectedColorIdx).length;
+        let countForColor = 0;
+        currentGameData.shapeToColor.forEach((c, idx) => {
+            if (c === selectedColorIdx && paintedShapes.has(idx + 1)) countForColor++;
+        });
+
+        const remaining = shapesForColor - countForColor;
+        statusBar.innerText = remaining === 0 ? "Color Done! 🎨" : `${remaining} shapes left for this color`;
+
+        if (paintedShapes.size === totalShapes && totalShapes > 0) {
+            statusBar.innerText = "⭐ MASTERPIECE COMPLETE! ⭐";
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        }
+    }
+
+    // Interaction logic
+    const viewport = document.getElementById('viewport');
+    let isDragging = false, startX, startY, lastPosX = 0, lastPosY = 0;
+
+    viewport.addEventListener('pointerdown', (e) => {
+        isDragging = false; startX = e.clientX; startY = e.clientY;
+        lastPosX = posX; lastPosY = posY;
+    });
+
+    viewport.addEventListener('pointermove', (e) => {
+        if (e.buttons !== 1) return;
+        isDragging = true;
+        posX = lastPosX + (e.clientX - startX);
+        posY = lastPosY + (e.clientY - startY);
+        updateTransform();
+    });
+
+    viewport.addEventListener('pointerup', (e) => {
+        if (!isDragging) handleTap(e);
+    });
+
+    function updateTransform() {
+        canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+    }
+
+    function handleTap(e) {
         if (!selectedColorIdx || !currentGameData) return;
         const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
-        const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+        const tapX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const tapY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        const x = Math.floor(tapX), y = Math.floor(tapY);
         
-        const id = currentGameData.map[y * canvas.width + x];
-        if (id > 0 && currentGameData.shapeToColor[id - 1] === selectedColorIdx) {
-            paintedShapes.add(id);
-            draw();
+        if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+            const id = currentGameData.map[y * canvas.width + x];
+            if (id > 0 && currentGameData.shapeToColor[id - 1] === selectedColorIdx) {
+                paintedShapes.add(id);
+                updateStatus();
+                render();
+            }
         }
-    });
+    }
 </script>
 </body>
 </html>
