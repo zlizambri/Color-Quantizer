@@ -63,7 +63,7 @@
         const saveBtn = document.getElementById('saveBtn');
 
         let currentGameData = null;
-        let selectedColorIdx = null; // Store the index (1 to NC)
+        let selectedColorIdx = null; 
         let userPaintMap = new Map();
 
         fetch('image_data/manifest.json')
@@ -100,7 +100,7 @@
                 s.onclick = () => {
                     document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
                     s.classList.add('selected');
-                    selectedColorIdx = idx + 1; // Palette is 0-indexed, Regions are 1-indexed
+                    selectedColorIdx = idx + 1;
                     render();
                 };
                 paletteDiv.appendChild(s);
@@ -110,26 +110,24 @@
 
         function render() {
             if (!currentGameData) return;
-            const imgData = ctx.createImageData(canvas.width, canvas.height);
+            const width = currentGameData.width;
+            const height = currentGameData.height;
+            const imgData = ctx.createImageData(width, height);
             const map = currentGameData.map;
-            const width = canvas.width;
 
             for (let i = 0; i < map.length; i++) {
                 const regionId = map[i];
                 let r, g, b;
 
                 if (userPaintMap.has(regionId)) {
-                    // 1. User has already painted this
                     [r, g, b] = userPaintMap.get(regionId);
                 } else if (selectedColorIdx !== null && regionId === selectedColorIdx) {
-                    // 2. HIGHLIGHT LOGIC: Checkerboard pattern
                     const x = i % width;
                     const y = Math.floor(i / width);
-                    const checkerSize = 8; // Size of the squares
+                    const checkerSize = 10; 
                     const isWhite = (Math.floor(x / checkerSize) + Math.floor(y / checkerSize)) % 2 === 0;
-                    r = g = b = isWhite ? 255 : 200; // White and Gray
+                    r = g = b = isWhite ? 255 : 220; 
                 } else {
-                    // 3. Default unpainted state
                     r = g = b = 245; 
                 }
 
@@ -150,9 +148,6 @@
             const index = y * canvas.width + x;
             const regionId = currentGameData.map[index];
 
-            // Only allow painting if the user clicked the correct color region
-            // (You can remove the "regionId === selectedColorIdx" check if you want 
-            // her to be able to paint any color anywhere).
             if (regionId !== undefined && regionId === selectedColorIdx) {
                 userPaintMap.set(regionId, currentGameData.palette[selectedColorIdx - 1]);
                 render();
