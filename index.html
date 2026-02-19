@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     
     <style>
-        :root { --bg: #f2f2f7; --card: #ffffff; --accent: #007aff; }
+        :root { --bg: #f2f2f7; --card: #ffffff; --accent: #007aff; --success: #34c759; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
         body { 
@@ -17,14 +17,12 @@
             height: 100dvh; width: 100vw; overflow: hidden; position: fixed; 
         }
 
-        /* Top Control Bar */
         #header { 
             background: var(--card); border-bottom: 1px solid #d1d1d6; 
             padding: 10px 20px; z-index: 100; padding-top: env(safe-area-inset-top); 
         }
         .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 5px; }
 
-        /* Canvas Area */
         #viewport { 
             flex: 1; position: relative; overflow: hidden; 
             background: #8e8e93; display: flex; align-items: center; justify-content: center; 
@@ -34,7 +32,6 @@
             transform-origin: center; touch-action: none; image-rendering: pixelated;
         }
 
-        /* Bottom Palette Scroll */
         #palette { 
             height: 140px; display: flex; gap: 15px; padding: 20px; 
             background: var(--card); border-top: 1px solid #d1d1d6; 
@@ -50,7 +47,6 @@
         }
         .swatch.active { border-color: #333; transform: scale(1.2) translateY(-10px); z-index: 10; }
 
-        /* Gallery Overlay */
         #galleryOverlay { 
             position: fixed; inset: 0; background: rgba(0,0,0,0.92); 
             z-index: 2000; overflow-y: auto; padding: 20px; display: none; 
@@ -61,15 +57,22 @@
             margin-bottom: 20px; font-size: 18px; background: #3a3a3c; color: white;
         }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 20px; }
-        .thumb-card { background: white; border-radius: 15px; padding: 10px; text-align: center; cursor: pointer; }
+        
+        /* Thumbnail Styles */
+        .thumb-card { background: white; border-radius: 15px; padding: 10px; text-align: center; cursor: pointer; border: 3px solid transparent; transition: border 0.3s; }
         .thumb-card img { 
             width: 100%; aspect-ratio: 1; object-fit: contain; 
             border-radius: 10px; background: #fff; 
-            border: 2px solid #d1d1d6; /* Gray border for visibility */
-            margin-bottom: 5px; 
+            border: 2px solid #d1d1d6; margin-bottom: 5px; 
+            filter: grayscale(100%); opacity: 0.7; transition: all 0.3s;
         }
+        .thumb-label { font-weight: 700; color: #333; display: flex; align-items: center; justify-content: center; gap: 4px; }
+        
+        /* Completion States */
+        .thumb-card.completed { border-color: var(--success); }
+        .thumb-card.completed img { filter: grayscale(0%); opacity: 1; }
+        .thumb-card.completed .thumb-label { color: var(--success); }
 
-        /* UI Elements */
         button { padding: 10px 20px; border-radius: 12px; border: none; font-weight: 700; font-size: 14px; }
         .btn-action { background: var(--accent); color: white; }
         .btn-icon { background: #e5e5ea; color: #3a3a3c; }
@@ -115,7 +118,6 @@
     let activeColorIdx = null, paintedShapes = new Set(), hintShapeId = null;
     let scale = 1, posX = 0, posY = 0, startDist = 0, touches = [];
 
-    // --- Gallery Logic ---
     function toggleGallery() {
         const g = document.getElementById('galleryOverlay');
         const isOpen = g.style.display === 'block';
@@ -128,7 +130,7 @@
             const res = await fetch('image_data/manifest.json');
             allFiles = await res.json();
             filterGallery();
-        } catch(e) { console.error("Manifest missing. Run MATLAB first."); }
+        } catch(e) { console.error("Manifest missing."); }
     }
 
     function filterGallery() {
@@ -138,9 +140,15 @@
         allFiles.forEach(file => {
             const cleanName = file.replace('_tapdata.json', '').replace(/_/g, ' ');
             if (cleanName.toLowerCase().includes(query)) {
-                const card = document.createElement('div'); card.className = 'thumb-card';
+                const isDone = localStorage.getItem('pc_status_' + file) === 'done';
+                const card = document.createElement('div'); 
+                card.className = 'thumb-card' + (isDone ? ' completed' : '');
                 const thumb = `image_data/${file.replace('_tapdata.json', '_thumb.png')}`;
-                card.innerHTML = `<img src="${thumb}"><div style="font-weight:700; color:#333;">${cleanName}</div>`;
+                
+                card.innerHTML = `
+                    <img src="${thumb}">
+                    <div class="thumb-label">${isDone ? '✓ ' : ''}${cleanName}</div>
+                `;
                 card.onclick = () => { loadPuzzle(file); toggleGallery(); };
                 grid.appendChild(card);
             }
@@ -151,26 +159,22 @@
         currentFile = filename;
         const res = await fetch(`image_data/${filename}`);
         gameData = await res.json();
-        
-        // Load Progress
         const saved = localStorage.getItem('pc_save_' + filename);
         paintedShapes = saved ? new Set(JSON.parse(saved)) : new Set();
-        
         canvas.width = gameData.width; canvas.height = gameData.height;
         const vRect = document.getElementById('viewport').getBoundingClientRect();
         scale = Math.min(vRect.width/canvas.width, vRect.height/canvas.height)*0.85;
         posX = 0; posY = 0; activeColorIdx = null;
-        
         document.getElementById('hintBtn').disabled = true;
         updateTransform(); renderPalette(); render();
         statusBar.innerText = "Let's Color!";
     }
 
-    // --- Rendering Logic ---
     function renderPalette() {
         paletteDiv.innerHTML = '';
         if (!gameData) return;
         let anyLeft = false;
+        let nextAvailableColor = null;
         
         gameData.palette.forEach((rgb, idx) => {
             const cid = idx + 1;
@@ -179,6 +183,8 @@
             
             if (foundCount < shapesOfColor.length) {
                 anyLeft = true;
+                if (nextAvailableColor === null) nextAvailableColor = cid;
+                
                 const swatch = document.createElement('div');
                 swatch.className = 'swatch' + (activeColorIdx === cid ? ' active' : '');
                 swatch.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
@@ -192,13 +198,30 @@
             }
         });
         
+        // AUTO-SELECT NEXT COLOR LOGIC
+        if (anyLeft && (activeColorIdx === null || !isColorRemaining(activeColorIdx))) {
+            activeColorIdx = nextAvailableColor;
+            document.getElementById('hintBtn').disabled = false;
+            updateStatus();
+            renderPalette();
+            render();
+        }
+
         if (!anyLeft && paintedShapes.size > 0) {
             statusBar.innerText = "100% COMPLETE! 🌟";
+            localStorage.setItem('pc_status_' + currentFile, 'done');
             confetti({ particleCount: 200, spread: 80, origin: { y: 0.6 } });
         }
     }
 
+    function isColorRemaining(cid) {
+        const shapesOfColor = gameData.shapeToColor.map((c, i) => c === cid ? i+1 : null).filter(n => n);
+        const foundCount = shapesOfColor.filter(sid => paintedShapes.has(sid)).length;
+        return foundCount < shapesOfColor.length;
+    }
+
     function updateStatus() {
+        if (!activeColorIdx) return;
         const total = gameData.shapeToColor.filter(c => c === activeColorIdx).length;
         let found = 0;
         gameData.shapeToColor.forEach((c, i) => { if (c === activeColorIdx && paintedShapes.has(i + 1)) found++; });
@@ -209,27 +232,17 @@
         if (!gameData) return;
         const imgData = ctx.createImageData(gameData.width, gameData.height);
         const { map, shapeToColor, palette, width } = gameData;
-        
         for (let i = 0; i < map.length; i++) {
             const sid = map[i], cid = shapeToColor[sid - 1];
             let r, g, b;
-
-            if (sid === 0) {
-                [r, g, b] = [255, 255, 255]; // Empty Background
-            } else if (paintedShapes.has(sid)) {
-                [r, g, b] = palette[cid - 1]; // Already Painted
-            } else if (sid === hintShapeId) {
-                [r, g, b] = [255, 0, 0]; // Hint Flash
-            } else if (activeColorIdx === cid) {
-                // HIGH CONTRAST CHECKERBOARD (Blue-Gray / White)
+            if (sid === 0) [r, g, b] = [255, 255, 255];
+            else if (paintedShapes.has(sid)) [r, g, b] = palette[cid - 1];
+            else if (sid === hintShapeId) [r, g, b] = [255, 0, 0];
+            else if (activeColorIdx === cid) {
                 const x = i % width, y = Math.floor(i / width);
-                const gridSize = 15; // Bigger squares for visibility
-                const isCheck = (Math.floor(x / gridSize) + Math.floor(y / gridSize)) % 2;
+                const isCheck = (Math.floor(x / 15) + Math.floor(y / 15)) % 2;
                 [r, g, b] = isCheck ? [255, 255, 255] : [160, 170, 190]; 
-            } else {
-                [r, g, b] = [242, 242, 247]; // Unselected (Light Gray)
-            }
-
+            } else [r, g, b] = [242, 242, 247];
             const p = i * 4;
             imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
         }
@@ -243,7 +256,6 @@
         const cY = (e.clientY - rect.top) * (canvas.height / rect.height);
         const rad = parseInt(radiusSlider.value);
         let found = false;
-        
         for (let y = Math.max(0, cY-rad); y <= Math.min(gameData.height-1, cY+rad); y++) {
             for (let x = Math.max(0, cX-rad); x <= Math.min(gameData.width-1, cX+rad); x++) {
                 if (Math.sqrt((x-cX)**2 + (y-cY)**2) <= rad) {
@@ -260,7 +272,6 @@
         }
     }
 
-    // --- Touch & Zoom Controls ---
     function updateTransform() { canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
     let isMoving = false, sX, sY, lpX, lpY, lScale;
     
@@ -294,6 +305,8 @@
         if(confirm("Erase progress for this drawing?")){ 
             paintedShapes.clear(); 
             localStorage.removeItem('pc_save_'+currentFile); 
+            localStorage.removeItem('pc_status_'+currentFile);
+            activeColorIdx = null;
             renderPalette(); render(); 
         } 
     }
@@ -307,7 +320,6 @@
             setTimeout(()=>{hintShapeId=null; render();}, 800); 
         }
     }
-    
     document.addEventListener('DOMContentLoaded', toggleGallery);
 </script>
 </body>
