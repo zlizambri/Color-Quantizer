@@ -4,162 +4,245 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="icon" href="https://fav.farm/🎨" />
-    <title>Zac's Tap-to-Color</title>
+    <title>PrismatiCore Tap-to-Color</title>
     <style>
-        :root { --bg: #fdfdfd; --ui: #ffffff; --accent: #4a90e2; }
+        :root { --bg: #f4f7f9; --ui: #ffffff; --accent: #4a90e2; --text: #333; }
         body { 
-            margin: 0; display: flex; flex-direction: column; align-items: center; 
-            background: var(--bg); font-family: -apple-system, sans-serif; overflow-x: hidden;
+            margin: 0; background: var(--bg); font-family: -apple-system, system-ui, sans-serif; 
+            overflow: hidden; height: 100vh; display: flex; flex-direction: column; 
         }
-        #nav { 
-            width: 100%; padding: 15px 0; text-align: center; background: var(--ui); 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100;
-        }
+        
+        /* Navigation & Header */
+        #nav { padding: 12px; text-align: center; background: var(--ui); box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 100; }
         select { 
             padding: 12px; font-size: 16px; border-radius: 12px; border: 1px solid #ddd; 
-            width: 85%; max-width: 400px; background: #fff;
+            width: 90%; max-width: 500px; background: #fff; outline: none;
         }
-        #game-area { 
-            display: flex; flex-direction: column; align-items: center; padding: 20px 0; width: 100%;
+
+        /* Drawing Area */
+        #viewport { 
+            flex: 1; overflow: hidden; position: relative; touch-action: none; 
+            display: flex; align-items: center; justify-content: center; background: #e5e9f0; 
         }
         canvas { 
-            border-radius: 15px; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.12); 
-            max-width: 95vw; max-height: 65vh; touch-action: none;
+            background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.15); 
+            image-rendering: pixelated; transform-origin: center; transition: opacity 0.3s;
         }
+
+        /* UI Overlay */
+        #status-bar { 
+            padding: 10px; text-align: center; background: var(--ui); 
+            font-weight: 700; color: var(--text); border-top: 1px solid #eee; font-size: 14px;
+        }
+        
         #palette { 
-            display: flex; gap: 12px; padding: 25px; flex-wrap: wrap; justify-content: center; max-width: 600px; 
+            display: flex; gap: 12px; padding: 15px; background: var(--ui); 
+            overflow-x: auto; border-top: 1px solid #eee; -webkit-overflow-scrolling: touch;
         }
         .swatch { 
-            width: 50px; height: 50px; border-radius: 50%; border: 3px solid #fff; 
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1); transition: transform 0.1s; cursor: pointer;
+            min-width: 50px; height: 50px; border-radius: 50%; border: 3px solid #fff; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); flex-shrink: 0; transition: transform 0.2s;
         }
-        .swatch.selected { border-color: #333; transform: scale(1.2); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-        .btn-save {
-            background: var(--accent); color: white; border: none; padding: 12px 24px;
-            border-radius: 10px; font-weight: bold; cursor: pointer; margin-bottom: 20px;
-        }
+        .swatch.selected { border-color: #333; transform: scale(1.15); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+
+        /* Confetti Layer */
+        #confetti-canvas { position: fixed; top: 0; left: 0; pointer-events: none; z-index: 1000; width: 100%; height: 100%; }
+        
         .hidden { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="nav">
-        <select id="imageSelector">
-            <option value="">-- Choose Your Image --</option>
-        </select>
-    </div>
+<canvas id="confetti-canvas"></canvas>
 
-    <div id="game-area">
-        <canvas id="gameCanvas" class="hidden"></canvas>
-        <div id="palette"></div>
-        <button id="saveBtn" class="btn-save hidden" onclick="downloadImage()">Save Masterpiece</button>
-    </div>
+<div id="nav">
+    <select id="imageSelector"><option value="">-- Choose Your Masterpiece --</option></select>
+</div>
 
-    <script>
-        const selector = document.getElementById('imageSelector');
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
-        const paletteDiv = document.getElementById('palette');
-        const saveBtn = document.getElementById('saveBtn');
+<div id="viewport">
+    <canvas id="gameCanvas" class="hidden"></canvas>
+</div>
 
-        let currentGameData = null;
-        let selectedColorIdx = null; 
-        let userPaintMap = new Map();
+<div id="status-bar">Select a color to start</div>
+<div id="palette"></div>
 
-        fetch('image_data/manifest.json')
-            .then(res => res.json())
-            .then(files => {
-                files.forEach(file => {
-                    const opt = document.createElement('option');
-                    opt.value = file;
-                    opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
-                    selector.appendChild(opt);
-                });
-            });
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
-        selector.onchange = async (e) => {
-            if (!e.target.value) return;
-            const response = await fetch(`image_data/${e.target.value}`);
-            currentGameData = await response.json();
-            userPaintMap.clear();
-            selectedColorIdx = null;
-            setupGame();
-        };
+<script>
+    const selector = document.getElementById('imageSelector');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const paletteDiv = document.getElementById('palette');
+    const statusBar = document.getElementById('status-bar');
+    
+    let currentGameData = null;
+    let selectedColorIdx = null;
+    let paintedShapes = new Set();
 
-        function setupGame() {
-            canvas.width = currentGameData.width;
-            canvas.height = currentGameData.height;
-            canvas.classList.remove('hidden');
-            saveBtn.classList.remove('hidden');
-            
-            paletteDiv.innerHTML = '';
-            currentGameData.palette.forEach((rgb, idx) => {
-                const s = document.createElement('div');
-                s.className = 'swatch';
-                s.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-                s.onclick = () => {
-                    document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
-                    s.classList.add('selected');
-                    selectedColorIdx = idx + 1;
-                    render();
-                };
-                paletteDiv.appendChild(s);
-            });
-            render();
-        }
+    // Transform State
+    let scale = 1, posX = 0, posY = 0;
+    let isDragging = false, startX, startY, lastPosX = 0, lastPosY = 0;
 
-        function render() {
-            if (!currentGameData) return;
-            const width = currentGameData.width;
-            const height = currentGameData.height;
-            const imgData = ctx.createImageData(width, height);
-            const map = currentGameData.map;
+    // 1. Load Manifest
+    fetch('image_data/manifest.json').then(res => res.json()).then(files => {
+        files.forEach(file => {
+            const opt = document.createElement('option');
+            opt.value = file;
+            opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
+            selector.appendChild(opt);
+        });
+    });
 
-            for (let i = 0; i < map.length; i++) {
-                const regionId = map[i];
-                let r, g, b;
+    // 2. Load Image Data
+    selector.onchange = async (e) => {
+        if (!e.target.value) return;
+        const res = await fetch(`image_data/${e.target.value}`);
+        currentGameData = await res.json();
+        
+        paintedShapes.clear();
+        selectedColorIdx = null;
+        scale = 1; posX = 0; posY = 0;
+        statusBar.innerText = "Color unselected";
+        
+        setupGame();
+    };
 
-                if (userPaintMap.has(regionId)) {
-                    [r, g, b] = userPaintMap.get(regionId);
-                } else if (selectedColorIdx !== null && regionId === selectedColorIdx) {
-                    const x = i % width;
-                    const y = Math.floor(i / width);
-                    const checkerSize = 10; 
-                    const isWhite = (Math.floor(x / checkerSize) + Math.floor(y / checkerSize)) % 2 === 0;
-                    r = g = b = isWhite ? 255 : 220; 
-                } else {
-                    r = g = b = 245; 
-                }
-
-                const p = i * 4;
-                imgData.data[p] = r;
-                imgData.data[p+1] = g;
-                imgData.data[p+2] = b;
-                imgData.data[p+3] = 255;
-            }
-            ctx.putImageData(imgData, 0, 0);
-        }
-
-        canvas.addEventListener('pointerdown', (e) => {
-            if (selectedColorIdx === null || !currentGameData) return;
-            const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
-            const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
-            const index = y * canvas.width + x;
-            const regionId = currentGameData.map[index];
-
-            if (regionId !== undefined && regionId === selectedColorIdx) {
-                userPaintMap.set(regionId, currentGameData.palette[selectedColorIdx - 1]);
+    function setupGame() {
+        canvas.width = currentGameData.width;
+        canvas.height = currentGameData.height;
+        canvas.classList.remove('hidden');
+        
+        paletteDiv.innerHTML = '';
+        currentGameData.palette.forEach((rgb, idx) => {
+            const s = document.createElement('div');
+            s.className = 'swatch';
+            s.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+            s.onclick = () => {
+                document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
+                s.classList.add('selected');
+                selectedColorIdx = idx + 1;
+                updateStatus();
                 render();
+            };
+            paletteDiv.appendChild(s);
+        });
+        updateTransform();
+        render();
+    }
+
+    // 3. Render Engine
+    function render() {
+        if (!currentGameData) return;
+        const width = currentGameData.width;
+        const imgData = ctx.createImageData(width, currentGameData.height);
+        const map = currentGameData.map;
+        const stc = currentGameData.shapeToColor;
+
+        for (let i = 0; i < map.length; i++) {
+            const id = map[i];
+            let r, g, b;
+
+            if (id === 0) { // Background/Empty
+                r = g = b = 255;
+            } else if (paintedShapes.has(id)) {
+                const cIdx = stc[id - 1];
+                [r, g, b] = currentGameData.palette[cIdx - 1];
+            } else if (selectedColorIdx && stc[id-1] === selectedColorIdx) {
+                const x = i % width;
+                const y = Math.floor(i / width);
+                const isWhite = (Math.floor(x/8) + Math.floor(y/8)) % 2 === 0;
+                r = g = b = isWhite ? 255 : 230; // Hint Pattern
+            } else {
+                r = g = b = 248; // Unpainted
             }
+
+            const p = i * 4;
+            imgData.data[p] = r; imgData.data[p+1] = g; imgData.data[p+2] = b; imgData.data[p+3] = 255;
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    // 4. Game Logic
+    function updateStatus() {
+        if (!selectedColorIdx) return;
+        const totalInImage = currentGameData.shapeToColor.length;
+        const totalForColor = currentGameData.shapeToColor.filter(c => c === selectedColorIdx).length;
+        
+        let foundForColor = 0;
+        currentGameData.shapeToColor.forEach((c, idx) => {
+            if (c === selectedColorIdx && paintedShapes.has(idx + 1)) foundForColor++;
         });
 
-        function downloadImage() {
-            const link = document.createElement('a');
-            link.download = 'my-painting.png';
-            link.href = canvas.toDataURL();
-            link.click();
+        const remaining = totalForColor - foundForColor;
+        statusBar.innerText = remaining === 0 ? "✨ Color Completed! ✨" : `${remaining} shapes remaining for this color`;
+
+        if (paintedShapes.size === totalInImage && totalInImage > 0) {
+            statusBar.innerText = "🏆 MASTERPIECE COMPLETE! 🏆";
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
         }
-    </script>
+    }
+
+    // 5. Interaction (Zoom/Pan/Tap)
+    const viewport = document.getElementById('viewport');
+
+    viewport.addEventListener('pointerdown', (e) => {
+        isDragging = false; 
+        startX = e.clientX; startY = e.clientY;
+        lastPosX = posX; lastPosY = posY;
+        viewport.setPointerCapture(e.pointerId);
+    });
+
+    viewport.addEventListener('pointermove', (e) => {
+        if (e.buttons !== 1) return;
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist > 5) {
+            isDragging = true;
+            posX = lastPosX + (e.clientX - startX);
+            posY = lastPosY + (e.clientY - startY);
+            updateTransform();
+        }
+    });
+
+    viewport.addEventListener('pointerup', (e) => {
+        viewport.releasePointerCapture(e.pointerId);
+        if (!isDragging) handleTap(e);
+    });
+
+    // Handle Wheel Zoom (Mouse or trackpad)
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        scale = Math.min(Math.max(0.5, scale * delta), 10);
+        updateTransform();
+    }, { passive: false });
+
+    function updateTransform() {
+        canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+    }
+
+    function handleTap(e) {
+        if (!selectedColorIdx || !currentGameData) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        
+        // Calculate coordinate within the actual canvas resolution
+        const tapX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const tapY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        const x = Math.floor(tapX);
+        const y = Math.floor(tapY);
+        
+        if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+            const id = currentGameData.map[y * canvas.width + x];
+            if (id > 0 && currentGameData.shapeToColor[id - 1] === selectedColorIdx) {
+                if (!paintedShapes.has(id)) {
+                    paintedShapes.add(id);
+                    updateStatus();
+                    render();
+                }
+            }
+        }
+    }
+</script>
 </body>
 </html>
