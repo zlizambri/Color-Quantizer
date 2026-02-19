@@ -3,204 +3,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PrismatiCore Master</title>
+    <title>PrismatiCore</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        :root { --bg: #f0f2f5; --card: #ffffff; --accent: #007aff; --danger: #ff3b30; }
+        :root { --bg: #f2f2f7; --card: #ffffff; --accent: #007aff; --text: #1c1c1e; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
+        
         body { 
-            margin: 0; font-family: -apple-system, system-ui, sans-serif; 
+            margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             background: var(--bg); display: flex; flex-direction: column; 
-            height: 100dvh; width: 100vw; overflow: hidden; position: fixed;
-        }
-        
-        #header { 
-            height: auto; min-height: 90px; padding: 10px 15px; background: var(--card); 
-            display: flex; flex-direction: column; gap: 8px;
-            border-bottom: 1px solid #ddd; z-index: 100; flex-shrink: 0;
-            padding-top: env(safe-area-inset-top);
+            height: 100dvh; width: 100vw; overflow: hidden; position: fixed; 
         }
 
-        .controls-row { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 10px; }
-        
+        /* Top Bar */
+        #header { 
+            background: var(--card); border-bottom: 1px solid #d1d1d6; 
+            padding: 10px 20px; z-index: 100; padding-top: env(safe-area-inset-top); 
+        }
+        .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 5px; }
+
+        /* Main Viewport */
         #viewport { 
             flex: 1; position: relative; overflow: hidden; 
-            background: #cbd5e0; display: flex; align-items: center; justify-content: center;
+            background: #8e8e93; display: flex; align-items: center; justify-content: center; 
         }
-
         canvas { 
-            background: #fff; box-shadow: 0 5px 25px rgba(0,0,0,0.25); 
-            transform-origin: center; touch-action: none; 
-            image-rendering: pixelated; display: block;
+            background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.3); 
+            transform-origin: center; touch-action: none; image-rendering: pixelated;
         }
 
+        /* Bottom Palette */
         #palette { 
-            height: 130px; display: flex; gap: 14px; padding: 15px; 
-            background: var(--card); border-top: 1px solid #ddd; 
-            overflow-x: auto; flex-shrink: 0; align-items: center; 
-            justify-content: flex-start; z-index: 100;
-            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+            height: 140px; display: flex; gap: 15px; padding: 20px; 
+            background: var(--card); border-top: 1px solid #d1d1d6; 
+            overflow-x: auto; align-items: center; 
+            padding-bottom: calc(20px + env(safe-area-inset-bottom)); 
         }
-        
-        .swatch-container { position: relative; flex-shrink: 0; text-align: center; }
         .swatch { 
-            min-width: 65px; height: 65px; border-radius: 50%; 
-            border: 4px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,0.15); 
-            display: flex; align-items: center; justify-content: center;
-            font-weight: bold; font-size: 20px; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.6);
-            transition: transform 0.2s;
+            min-width: 70px; height: 70px; border-radius: 50%; border: 4px solid #fff; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: flex; align-items: center; 
+            justify-content: center; font-weight: 800; font-size: 24px; color: white; 
+            text-shadow: 0 1px 4px rgba(0,0,0,0.8); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            flex-shrink: 0; cursor: pointer;
         }
-        .swatch.active { border-color: #333; transform: scale(1.15) translateY(-8px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); }
+        .swatch.active { border-color: #333; transform: scale(1.2) translateY(-10px); z-index: 10; }
 
-        .slider-box { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; color: #444; }
-        input[type=range] { width: 90px; }
-
-        .btn-group { display: flex; gap: 8px; }
-        button { 
-            padding: 8px 14px; border-radius: 20px; border: none; 
-            font-weight: 700; font-size: 13px; cursor: pointer;
+        /* Gallery Overlay */
+        #galleryOverlay { 
+            position: fixed; inset: 0; background: rgba(0,0,0,0.92); 
+            z-index: 2000; overflow-y: auto; padding: 30px 20px; display: none; 
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
         }
-        #hintBtn { background: var(--accent); color: white; }
-        #resetBtn { background: #eee; color: #666; font-size: 18px; padding: 4px 12px; }
-        button:disabled { background: #ccc !important; opacity: 0.5; }
+        .search-bar { 
+            width: 100%; padding: 18px; border-radius: 14px; border: none; 
+            margin-bottom: 25px; font-size: 18px; background: #2c2c2e; color: white;
+        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 20px; }
+        .thumb-card { background: #fff; border-radius: 18px; padding: 12px; text-align: center; cursor: pointer; }
+        .thumb-card img { 
+            width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 12px; 
+            background: #fff; border: 1px solid #e5e5ea; margin-bottom: 8px; 
+        }
 
-        select { height: 38px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; background: #fff; flex: 1; }
+        /* Inputs & Buttons */
+        button { padding: 12px 20px; border-radius: 12px; border: none; font-weight: 700; font-size: 15px; }
+        .btn-action { background: var(--accent); color: white; }
+        .btn-icon { background: #e5e5ea; color: #3a3a3c; }
+        input[type=range] { flex: 1; height: 30px; }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <div class="controls-row">
-        <select id="imageSelector"><option value="">-- Choose Image --</option></select>
-        <div class="btn-group">
-            <button id="resetBtn" onclick="resetProgress()" title="Restart Puzzle">↺</button>
-            <button id="hintBtn" onclick="giveHint()" disabled>Hint</button>
-        </div>
+    <div class="row">
+        <button class="btn-icon" onclick="toggleGallery()" style="flex:1">Gallery</button>
+        <button class="btn-icon" onclick="resetProgress()">↺ Reset</button>
+        <button id="hintBtn" class="btn-action" onclick="giveHint()" disabled>Hint</button>
     </div>
-    <div class="controls-row">
-        <div class="slider-box">
-            <span>Tap Size:</span>
-            <input type="range" id="radiusSlider" min="1" max="60" value="20">
+    <div class="row">
+        <div style="display:flex; align-items:center; gap:10px; flex:1; font-weight:bold; color:#8e8e93; font-size: 14px;">
+            <span>Brush:</span><input type="range" id="radiusSlider" min="1" max="60" value="20">
         </div>
-        <div id="status-bar" style="font-size: 12px; font-weight:600; color: #666;">Ready!</div>
+        <div id="status-bar" style="font-size:13px; font-weight:800; color: var(--accent);">OPEN GALLERY</div>
     </div>
 </div>
 
-<div id="viewport">
-    <canvas id="gameCanvas"></canvas>
-</div>
-
+<div id="viewport"><canvas id="gameCanvas"></canvas></div>
 <div id="palette"></div>
 
+<div id="galleryOverlay">
+    <div class="row" style="margin-bottom:20px;">
+        <h2 style="color:white; margin:0; font-size: 32px;">My Puzzles</h2>
+        <button class="btn-action" onclick="toggleGallery()">Back</button>
+    </div>
+    <input type="text" id="gallerySearch" class="search-bar" placeholder="Find a drawing..." oninput="filterGallery()">
+    <div id="galleryGrid" class="grid"></div>
+</div>
+
 <script>
-    const selector = document.getElementById('imageSelector');
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d', { alpha: false });
     const paletteDiv = document.getElementById('palette');
-    const hintBtn = document.getElementById('hintBtn');
-    const radiusSlider = document.getElementById('radiusSlider');
     const statusBar = document.getElementById('status-bar');
+    const radiusSlider = document.getElementById('radiusSlider');
 
-    let gameData = null;
-    let activeColorIdx = null;
-    let paintedShapes = new Set();
-    let hintShapeId = null;
-    let scale = 1, lastScale = 1, posX = 0, posY = 0, lastPosX = 0, lastPosY = 0, startDist = 0;
+    let gameData = null, currentFile = null, allFiles = [];
+    let activeColorIdx = null, paintedShapes = new Set(), hintShapeId = null;
+    let scale = 1, posX = 0, posY = 0, startDist = 0, touches = [];
 
-    // Load Puzzle List
-    document.addEventListener('DOMContentLoaded', () => {
-        fetch('image_data/manifest.json')
-            .then(res => res.json())
-            .then(files => {
-                files.forEach(file => {
-                    const opt = document.createElement('option');
-                    opt.value = file;
-                    opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
-                    selector.appendChild(opt);
-                });
-            });
-    });
-
-    selector.onchange = async (e) => {
-        if (!e.target.value) return;
-        const filename = e.target.value;
-        const res = await fetch(`image_data/${filename}`);
-        gameData = await res.json();
-        
-        // --- LOAD PROGRESS ---
-        const saved = localStorage.getItem('prismasave_' + filename);
-        if (saved) {
-            paintedShapes = new Set(JSON.parse(saved));
-            statusBar.innerText = "Resumed progress!";
-        } else {
-            paintedShapes.clear();
-            statusBar.innerText = "Starting new!";
-        }
-        
-        activeColorIdx = null;
-        hintBtn.disabled = true;
-        
-        canvas.width = gameData.width;
-        canvas.height = gameData.height;
-        const vRect = document.getElementById('viewport').getBoundingClientRect();
-        scale = Math.min(vRect.width / canvas.width, vRect.height / canvas.height) * 0.85;
-        posX = 0; posY = 0;
-        
-        updateTransform();
-        renderPalette();
-        render();
-    };
-
-    function saveProgress() {
-        if (!gameData) return;
-        localStorage.setItem('prismasave_' + selector.value, JSON.stringify([...paintedShapes]));
+    function toggleGallery() {
+        const g = document.getElementById('galleryOverlay');
+        const isOpen = g.style.display === 'block';
+        g.style.display = isOpen ? 'none' : 'block';
+        if(!isOpen) loadGallery();
     }
 
-    function resetProgress() {
-        if (!gameData) return;
-        if (confirm("Start this masterpiece over from the beginning?")) {
-            paintedShapes.clear();
-            localStorage.removeItem('prismasave_' + selector.value);
-            activeColorIdx = null;
-            hintBtn.disabled = true;
-            renderPalette();
-            render();
-            statusBar.innerText = "Puzzle Reset.";
-        }
+    async function loadGallery() {
+        try {
+            const res = await fetch('image_data/manifest.json');
+            allFiles = await res.json();
+            filterGallery();
+        } catch(e) { console.error("Manifest not found. Run MATLAB first."); }
+    }
+
+    function filterGallery() {
+        const query = document.getElementById('gallerySearch').value.toLowerCase();
+        const grid = document.getElementById('galleryGrid');
+        grid.innerHTML = '';
+        allFiles.forEach(file => {
+            const cleanName = file.replace('_tapdata.json', '').replace(/_/g, ' ');
+            if (cleanName.toLowerCase().includes(query)) {
+                const card = document.createElement('div'); card.className = 'thumb-card';
+                const thumb = `image_data/${file.replace('_tapdata.json', '_thumb.png')}`;
+                card.innerHTML = `<img src="${thumb}"><div style="font-weight:700; color:#333;">${cleanName}</div>`;
+                card.onclick = () => { loadPuzzle(file); toggleGallery(); };
+                grid.appendChild(card);
+            }
+        });
+    }
+
+    async function loadPuzzle(filename) {
+        currentFile = filename;
+        const res = await fetch(`image_data/${filename}`);
+        gameData = await res.json();
+        const saved = localStorage.getItem('pc_save_' + filename);
+        paintedShapes = saved ? new Set(JSON.parse(saved)) : new Set();
+        canvas.width = gameData.width; canvas.height = gameData.height;
+        const vRect = document.getElementById('viewport').getBoundingClientRect();
+        scale = Math.min(vRect.width/canvas.width, vRect.height/canvas.height)*0.85;
+        posX = 0; posY = 0; activeColorIdx = null;
+        document.getElementById('hintBtn').disabled = true;
+        updateTransform(); renderPalette(); render();
+        statusBar.innerText = "COLOR TIME!";
     }
 
     function renderPalette() {
         paletteDiv.innerHTML = '';
         if (!gameData) return;
+        let anyLeft = false;
         gameData.palette.forEach((rgb, idx) => {
-            const colorIdx = idx + 1;
-            const total = gameData.shapeToColor.filter(c => c === colorIdx).length;
-            let found = 0;
-            gameData.shapeToColor.forEach((c, i) => { if (c === colorIdx && paintedShapes.has(i + 1)) found++; });
-
-            if (found < total) {
-                const container = document.createElement('div');
-                container.className = 'swatch-container';
+            const cid = idx + 1;
+            const shapesOfColor = gameData.shapeToColor.map((c, i) => c === cid ? i+1 : null).filter(n => n);
+            const foundCount = shapesOfColor.filter(sid => paintedShapes.has(sid)).length;
+            if (foundCount < shapesOfColor.length) {
+                anyLeft = true;
                 const swatch = document.createElement('div');
-                swatch.className = 'swatch' + (activeColorIdx === colorIdx ? ' active' : '');
-                swatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-                swatch.innerText = colorIdx;
-                swatch.onclick = () => { activeColorIdx = colorIdx; hintBtn.disabled = false; updateStatus(); renderPalette(); render(); };
-                container.appendChild(swatch);
-                paletteDiv.appendChild(container);
+                swatch.className = 'swatch' + (activeColorIdx === cid ? ' active' : '');
+                swatch.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+                swatch.innerText = cid;
+                swatch.onclick = () => { 
+                    activeColorIdx = cid; 
+                    document.getElementById('hintBtn').disabled = false; 
+                    updateStatus(); renderPalette(); render(); 
+                };
+                paletteDiv.appendChild(swatch);
             }
         });
-        if (paletteDiv.innerHTML === "" && paintedShapes.size > 0) {
-            statusBar.innerText = "🏆 100% COMPLETE! 🏆";
+        if (!anyLeft && paintedShapes.size > 0) {
+            statusBar.innerText = "100% COMPLETE! 🌟";
+            confetti({ particleCount: 200, spread: 80, origin: { y: 0.6 } });
         }
     }
 
     function updateStatus() {
-        if (!gameData || !activeColorIdx) return;
-        const totalOfColor = gameData.shapeToColor.filter(c => c === activeColorIdx).length;
-        let foundOfColor = 0;
-        gameData.shapeToColor.forEach((c, i) => { if (c === activeColorIdx && paintedShapes.has(i + 1)) foundOfColor++; });
-        statusBar.innerText = `${totalOfColor - foundOfColor} left for color #${activeColorIdx}`;
+        const total = gameData.shapeToColor.filter(c => c === activeColorIdx).length;
+        let found = 0;
+        gameData.shapeToColor.forEach((c, i) => { if (c === activeColorIdx && paintedShapes.has(i + 1)) found++; });
+        statusBar.innerText = `${total - found} LEFT FOR #${activeColorIdx}`;
     }
 
     function render() {
@@ -208,94 +197,93 @@
         const imgData = ctx.createImageData(gameData.width, gameData.height);
         const { map, shapeToColor, palette, width } = gameData;
         for (let i = 0; i < map.length; i++) {
-            const sid = map[i];
-            const cid = shapeToColor[sid - 1];
+            const sid = map[i], cid = shapeToColor[sid - 1];
             let r, g, b;
-            
-            if (sid === 0) [r, g, b] = [255, 255, 255];
-            else if (paintedShapes.has(sid)) [r, g, b] = palette[cid - 1];
-            else if (sid === hintShapeId) [r, g, b] = [255, 0, 0];
-            else if (activeColorIdx === cid) {
-                const x = i % width; const y = Math.floor(i / width);
-                const pat = (Math.floor(x/10) + Math.floor(y/10)) % 2 === 0;
-                [r, g, b] = pat ? [255, 255, 255] : [100, 116, 139]; 
-            } else [r, g, b] = [240, 240, 240];
-            
+            if (sid === 0) [r,g,b] = [255,255,255]; // Background
+            else if (paintedShapes.has(sid)) [r,g,b] = palette[cid-1]; // Painted
+            else if (sid === hintShapeId) [r,g,b] = [255,0,0]; // Hint Flash
+            else if (activeColorIdx === cid) { // To be painted
+                const x = i % width, y = Math.floor(i / width);
+                [r,g,b] = (Math.floor(x/12)+Math.floor(y/12))%2 ? [255,255,255] : [200, 200, 210];
+            } else [r,g,b] = [242, 242, 247]; // Unselected
             const p = i * 4; imgData.data[p]=r; imgData.data[p+1]=g; imgData.data[p+2]=b; imgData.data[p+3]=255;
         }
         ctx.putImageData(imgData, 0, 0);
     }
 
-    function updateTransform() { canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
-
-    // Touch/Interaction
-    let isMoving = false, touches = [], startX, startY;
-    canvas.addEventListener('pointerdown', (e) => {
-        touches.push(e);
-        if (touches.length === 1) {
-            isMoving = false; lastPosX = posX; lastPosY = posY; startX = e.clientX; startY = e.clientY;
-        } else if (touches.length === 2) {
-            startDist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
-            lastScale = scale;
-        }
-    });
-    window.addEventListener('pointermove', (e) => {
-        const idx = touches.findIndex(t => t.pointerId === e.pointerId);
-        if (idx > -1) touches[idx] = e;
-        if (touches.length === 1) {
-            const dx = e.clientX - startX, dy = e.clientY - startY;
-            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                isMoving = true; posX = lastPosX + dx; posY = lastPosY + dy; updateTransform();
-            }
-        } else if (touches.length === 2) {
-            isMoving = true;
-            const newDist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
-            scale = lastScale * (newDist / startDist); updateTransform();
-        }
-    });
-    window.addEventListener('pointerup', (e) => {
-        if (touches.length === 1 && !isMoving) handleTap(touches[0]);
-        touches = touches.filter(t => t.pointerId !== e.pointerId);
-    });
-
     function handleTap(e) {
         if (!gameData || !activeColorIdx) return;
         const rect = canvas.getBoundingClientRect();
-        const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
-        const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
-        const radius = parseInt(radiusSlider.value);
-        let foundAny = false;
-
-        const sX = Math.max(0, Math.floor(clickX - radius)), eX = Math.min(gameData.width - 1, Math.ceil(clickX + radius));
-        const sY = Math.max(0, Math.floor(clickY - radius)), eY = Math.min(gameData.height - 1, Math.ceil(clickY + radius));
-
-        for (let y = sY; y <= eY; y++) {
-            for (let x = sX; x <= eX; x++) {
-                if (Math.sqrt((x - clickX)**2 + (y - clickY)**2) <= radius) {
-                    const sid = gameData.map[y * gameData.width + x];
-                    if (sid > 0 && gameData.shapeToColor[sid - 1] === activeColorIdx && !paintedShapes.has(sid)) {
-                        paintedShapes.add(sid); foundAny = true;
+        const cX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const cY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        const rad = parseInt(radiusSlider.value);
+        let found = false;
+        for (let y = Math.max(0, cY-rad); y <= Math.min(gameData.height-1, cY+rad); y++) {
+            for (let x = Math.max(0, cX-rad); x <= Math.min(gameData.width-1, cX+rad); x++) {
+                if (Math.sqrt((x-cX)**2 + (y-cY)**2) <= rad) {
+                    const sid = gameData.map[Math.floor(y)*gameData.width + Math.floor(x)];
+                    if (sid > 0 && gameData.shapeToColor[sid-1] === activeColorIdx && !paintedShapes.has(sid)) {
+                        paintedShapes.add(sid); found = true;
                     }
                 }
             }
         }
-        if (foundAny) { 
-            saveProgress(); // AUTO-SAVE ON TAP
-            updateStatus(); 
-            renderPalette(); 
-            render(); 
+        if (found) {
+            localStorage.setItem('pc_save_' + currentFile, JSON.stringify([...paintedShapes]));
+            renderPalette(); render(); updateStatus();
         }
     }
 
+    // Camera & Zoom Logic
+    function updateTransform() { canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
+    let isMoving = false, sX, sY, lpX, lpY, lScale;
+    
+    canvas.addEventListener('pointerdown', e => { 
+        touches.push(e); 
+        if(touches.length===1){ isMoving=false; lpX=posX; lpY=posY; sX=e.clientX; sY=e.clientY; } 
+        else if(touches.length===2){ 
+            startDist=Math.hypot(touches[0].clientX-touches[1].clientX, touches[0].clientY-touches[1].clientY); 
+            lScale=scale; 
+        } 
+    });
+
+    window.addEventListener('pointermove', e => { 
+        const idx=touches.findIndex(t=>t.pointerId===e.pointerId); if(idx>-1) touches[idx]=e; 
+        if(touches.length===1){ 
+            const dx=e.clientX-sX, dy=e.clientY-sY; 
+            if(Math.abs(dx)>10||Math.abs(dy)>10){ isMoving=true; posX=lpX+dx; posY=lpY+dy; updateTransform(); } 
+        } else if(touches.length===2){ 
+            isMoving=true; 
+            const newDist = Math.hypot(touches[0].clientX-touches[1].clientX, touches[0].clientY-touches[1].clientY);
+            scale=lScale*(newDist/startDist); updateTransform(); 
+        } 
+    });
+
+    window.addEventListener('pointerup', e => { 
+        if(touches.length===1 && !isMoving) handleTap(touches[0]); 
+        touches=touches.filter(t=>t.pointerId!==e.pointerId); 
+    });
+
+    function resetProgress() { 
+        if(confirm("Erase your work for this drawing?")){ 
+            paintedShapes.clear(); 
+            localStorage.removeItem('pc_save_'+currentFile); 
+            renderPalette(); render(); 
+        } 
+    }
+
     function giveHint() {
-        if (!activeColorIdx) return;
-        const unpainted = [];
-        gameData.shapeToColor.forEach((cid, idx) => { if (cid === activeColorIdx && !paintedShapes.has(idx+1)) unpainted.push(idx+1); });
-        if (unpainted.length > 0) {
-            hintShapeId = unpainted[Math.floor(Math.random() * unpainted.length)];
-            render(); setTimeout(() => { hintShapeId = null; render(); }, 800);
+        const unp = []; 
+        gameData.shapeToColor.forEach((c, i) => { if(c===activeColorIdx && !paintedShapes.has(i+1)) unp.push(i+1); });
+        if(unp.length){ 
+            hintShapeId=unp[Math.floor(Math.random()*unp.length)]; 
+            render(); 
+            setTimeout(()=>{hintShapeId=null; render();}, 800); 
         }
     }
+    
+    // Auto-open gallery on first launch
+    document.addEventListener('DOMContentLoaded', toggleGallery);
 </script>
 </body>
 </html>
