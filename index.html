@@ -15,7 +15,7 @@
         }
         
         #header { 
-            height: auto; min-height: 80px; padding: 10px 15px; background: var(--card); 
+            height: auto; min-height: 85px; padding: 10px 15px; background: var(--card); 
             display: flex; flex-direction: column; gap: 8px;
             border-bottom: 1px solid #ddd; z-index: 100; flex-shrink: 0;
             padding-top: env(safe-area-inset-top);
@@ -25,17 +25,17 @@
         
         #viewport { 
             flex: 1; position: relative; overflow: hidden; 
-            background: #d1d8e0; display: flex; align-items: center; justify-content: center;
+            background: #cbd5e0; display: flex; align-items: center; justify-content: center;
         }
 
         canvas { 
-            background: #fff; box-shadow: 0 5px 25px rgba(0,0,0,0.15); 
+            background: #fff; box-shadow: 0 5px 25px rgba(0,0,0,0.25); 
             transform-origin: center; touch-action: none; 
             image-rendering: pixelated; display: block;
         }
 
         #palette { 
-            height: 120px; display: flex; gap: 12px; padding: 15px; 
+            height: 125px; display: flex; gap: 14px; padding: 15px; 
             background: var(--card); border-top: 1px solid #ddd; 
             overflow-x: auto; flex-shrink: 0; align-items: center; 
             justify-content: flex-start; z-index: 100;
@@ -45,23 +45,23 @@
         .swatch-container { position: relative; flex-shrink: 0; text-align: center; }
         .swatch { 
             min-width: 65px; height: 65px; border-radius: 50%; 
-            border: 4px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+            border: 4px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,0.15); 
             display: flex; align-items: center; justify-content: center;
-            font-weight: bold; font-size: 18px; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+            font-weight: bold; font-size: 20px; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.6);
             transition: transform 0.2s;
         }
-        .swatch.active { border-color: #333; transform: scale(1.1) translateY(-5px); }
+        .swatch.active { border-color: #333; transform: scale(1.15) translateY(-8px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); }
 
-        .slider-box { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: bold; color: #555; }
-        input[type=range] { width: 100px; }
+        .slider-box { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: bold; color: #444; }
+        input[type=range] { width: 110px; }
 
         button#hintBtn { 
-            padding: 8px 16px; border-radius: 20px; border: none; 
-            background: var(--accent); color: white; font-weight: 600;
+            padding: 8px 18px; border-radius: 20px; border: none; 
+            background: var(--accent); color: white; font-weight: 700; font-size: 14px;
         }
         button#hintBtn:disabled { background: #ccc; opacity: 0.5; }
 
-        select { height: 35px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; background: #fff; flex: 1; margin-right: 10px; }
+        select { height: 38px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; background: #fff; flex: 1; margin-right: 12px; }
     </style>
 </head>
 <body>
@@ -69,14 +69,14 @@
 <div id="header">
     <div class="controls-row">
         <select id="imageSelector"><option value="">-- Choose Image --</option></select>
-        <button id="hintBtn" onclick="giveHint()" disabled>Hint</button>
+        <button id="hintBtn" onclick="giveHint()" disabled>Need Help?</button>
     </div>
     <div class="controls-row">
         <div class="slider-box">
             <span>Tap Size:</span>
-            <input type="range" id="radiusSlider" min="1" max="50" value="15">
+            <input type="range" id="radiusSlider" min="1" max="60" value="20">
         </div>
-        <div id="status-bar" style="font-size: 11px; color: #999;">Ready</div>
+        <div id="status-bar" style="font-size: 12px; font-weight:600; color: #666;">Ready!</div>
     </div>
 </div>
 
@@ -93,6 +93,7 @@
     const paletteDiv = document.getElementById('palette');
     const hintBtn = document.getElementById('hintBtn');
     const radiusSlider = document.getElementById('radiusSlider');
+    const statusBar = document.getElementById('status-bar');
 
     let gameData = null;
     let activeColorIdx = null;
@@ -130,6 +131,7 @@
         updateTransform();
         renderPalette();
         render();
+        statusBar.innerText = "Image Loaded!";
     };
 
     function renderPalette() {
@@ -144,22 +146,23 @@
             if (found < total) {
                 const container = document.createElement('div');
                 container.className = 'swatch-container';
-                
                 const swatch = document.createElement('div');
                 swatch.className = 'swatch' + (activeColorIdx === colorIdx ? ' active' : '');
                 swatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-                swatch.innerText = colorIdx; // Numbering the colors
-                
-                swatch.onclick = () => { 
-                    activeColorIdx = colorIdx; 
-                    hintBtn.disabled = false;
-                    renderPalette(); 
-                    render(); 
-                };
+                swatch.innerText = colorIdx;
+                swatch.onclick = () => { activeColorIdx = colorIdx; hintBtn.disabled = false; updateStatus(); renderPalette(); render(); };
                 container.appendChild(swatch);
                 paletteDiv.appendChild(container);
             }
         });
+    }
+
+    function updateStatus() {
+        if (!gameData || !activeColorIdx) return;
+        const totalOfColor = gameData.shapeToColor.filter(c => c === activeColorIdx).length;
+        let foundOfColor = 0;
+        gameData.shapeToColor.forEach((c, i) => { if (c === activeColorIdx && paintedShapes.has(i + 1)) foundOfColor++; });
+        statusBar.innerText = `${totalOfColor - foundOfColor} shapes left for #${activeColorIdx}`;
     }
 
     function render() {
@@ -170,13 +173,18 @@
             const sid = map[i];
             const cid = shapeToColor[sid - 1];
             let r, g, b;
+            
             if (sid === 0) [r, g, b] = [255, 255, 255];
             else if (paintedShapes.has(sid)) [r, g, b] = palette[cid - 1];
             else if (sid === hintShapeId) [r, g, b] = [255, 0, 0];
             else if (activeColorIdx === cid) {
-                const pat = (Math.floor((i%width)/8) + Math.floor((i/width)/8)) % 2 === 0;
-                [r, g, b] = pat ? [255, 255, 255] : [235, 235, 235];
-            } else [r, g, b] = [248, 248, 248];
+                // --- HIGH CONTRAST HIGHLIGHT ---
+                const x = i % width;
+                const y = Math.floor(i / width);
+                const pat = (Math.floor(x/10) + Math.floor(y/10)) % 2 === 0;
+                [r, g, b] = pat ? [255, 255, 255] : [100, 116, 139]; // Slate Blue contrast
+            } else [r, g, b] = [240, 240, 240];
+            
             const p = i * 4; imgData.data[p]=r; imgData.data[p+1]=g; imgData.data[p+2]=b; imgData.data[p+3]=255;
         }
         ctx.putImageData(imgData, 0, 0);
@@ -218,35 +226,23 @@
         const rect = canvas.getBoundingClientRect();
         const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
         const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
-        
         const radius = parseInt(radiusSlider.value);
         let foundAny = false;
 
-        // Check a bounding box around the click for speed, then verify distance
-        const startX = Math.max(0, Math.floor(clickX - radius));
-        const endX = Math.min(gameData.width - 1, Math.ceil(clickX + radius));
-        const startY = Math.max(0, Math.floor(clickY - radius));
-        const endY = Math.min(gameData.height - 1, Math.ceil(clickY + radius));
+        const sX = Math.max(0, Math.floor(clickX - radius)), eX = Math.min(gameData.width - 1, Math.ceil(clickX + radius));
+        const sY = Math.max(0, Math.floor(clickY - radius)), eY = Math.min(gameData.height - 1, Math.ceil(clickY + radius));
 
-        for (let y = startY; y <= endY; y++) {
-            for (let x = startX; x <= endX; x++) {
-                const dist = Math.sqrt((x - clickX)**2 + (y - clickY)**2);
-                if (dist <= radius) {
+        for (let y = sY; y <= eY; y++) {
+            for (let x = sX; x <= eX; x++) {
+                if (Math.sqrt((x - clickX)**2 + (y - clickY)**2) <= radius) {
                     const sid = gameData.map[y * gameData.width + x];
-                    if (sid > 0 && gameData.shapeToColor[sid - 1] === activeColorIdx) {
-                        if (!paintedShapes.has(sid)) {
-                            paintedShapes.add(sid);
-                            foundAny = true;
-                        }
+                    if (sid > 0 && gameData.shapeToColor[sid - 1] === activeColorIdx && !paintedShapes.has(sid)) {
+                        paintedShapes.add(sid); foundAny = true;
                     }
                 }
             }
         }
-
-        if (foundAny) {
-            renderPalette();
-            render();
-        }
+        if (foundAny) { updateStatus(); renderPalette(); render(); }
     }
 
     function giveHint() {
