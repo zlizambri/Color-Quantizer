@@ -3,47 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PrismatiCore Mobile</title>
+    <title>PrismatiCore</title>
     <style>
         :root { --bg: #f0f2f5; --card: #ffffff; --accent: #007aff; }
-        
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body { 
             margin: 0; font-family: -apple-system, system-ui, sans-serif; 
             background: var(--bg); display: flex; flex-direction: column; 
-            /* dvh handles the shifting iPad address bar height */
-            height: 100dvh; width: 100vw; 
-            overflow: hidden; position: fixed;
+            height: 100dvh; width: 100vw; overflow: hidden; position: fixed;
         }
         
         #header { 
-            height: 60px; padding: 0 15px; background: var(--card); 
+            height: 70px; padding: 0 15px; background: var(--card); 
             display: flex; justify-content: space-between; align-items: center; 
-            border-bottom: 1px solid #ddd; z-index: 10; flex-shrink: 0;
+            border-bottom: 1px solid #ddd; z-index: 100; flex-shrink: 0;
+            padding-top: env(safe-area-inset-top);
         }
 
         #viewport { 
-            flex: 1; /* This takes up all remaining space between header and palette */
-            position: relative; overflow: hidden; 
+            flex: 1; position: relative; overflow: hidden; 
             background: #d1d8e0; display: flex; align-items: center; justify-content: center;
         }
 
         canvas { 
             background: #fff; box-shadow: 0 5px 25px rgba(0,0,0,0.15); 
             transform-origin: center; touch-action: none; 
-            image-rendering: pixelated;
+            image-rendering: pixelated; display: block;
         }
 
         #palette { 
-            height: 90px; /* Fixed height to prevent cutting off */
-            display: flex; gap: 12px; padding: 10px 15px; background: var(--card); 
-            border-top: 1px solid #ddd; overflow-x: auto; flex-shrink: 0;
-            -webkit-overflow-scrolling: touch; align-items: center; justify-content: flex-start;
+            height: 110px; display: flex; gap: 12px; padding: 15px; 
+            background: var(--card); border-top: 1px solid #ddd; 
+            overflow-x: auto; flex-shrink: 0; align-items: center; 
+            justify-content: flex-start; z-index: 100;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
         }
         
         .swatch { 
-            min-width: 60px; height: 60px; border-radius: 50%; 
+            min-width: 65px; height: 65px; border-radius: 50%; 
             border: 4px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
             flex-shrink: 0; transition: transform 0.2s;
         }
@@ -53,17 +51,18 @@
             padding: 10px 20px; border-radius: 20px; border: none; 
             background: var(--accent); color: white; font-weight: 600;
         }
-        
-        /* Small fix for iPad "Safe Areas" near the home bar */
-        @media (max-width: 1024px) {
-            #palette { padding-bottom: calc(10px + env(safe-area-inset-bottom)); height: auto; min-height: 100px; }
+        button#hintBtn:disabled { background: #ccc; opacity: 0.5; }
+
+        select { 
+            height: 40px; border-radius: 8px; border: 1px solid #ccc; 
+            font-size: 16px; background: #fff; max-width: 60%;
         }
     </style>
 </head>
 <body>
 
 <div id="header">
-    <select id="imageSelector" style="width: 50%; height: 35px;"><option value="">-- Image --</option></select>
+    <select id="imageSelector"><option value="">-- Choose Image --</option></select>
     <button id="hintBtn" onclick="giveHint()" disabled>Hint</button>
 </div>
 
@@ -74,8 +73,152 @@
 <div id="palette"></div>
 
 <script>
-    // ... [KEEP ALL JAVASCRIPT LOGIC FROM THE PREVIOUS RESPONSE] ...
-    // The JavaScript logic remains perfect; the fix is strictly in the CSS above.
+    const selector = document.getElementById('imageSelector');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const paletteDiv = document.getElementById('palette');
+    const hintBtn = document.getElementById('hintBtn');
+
+    let gameData = null;
+    let activeColorIdx = null;
+    let paintedShapes = new Set();
+    let hintShapeId = null;
+
+    // Zoom/Pan State
+    let scale = 1, lastScale = 1, posX = 0, posY = 0, lastPosX = 0, lastPosY = 0, startDist = 0;
+
+    // 1. LOAD MANIFEST IMMEDIATELY
+    document.addEventListener('DOMContentLoaded', () => {
+        fetch('image_data/manifest.json')
+            .then(res => res.json())
+            .then(files => {
+                selector.innerHTML = '<option value="">-- Choose Image --</option>';
+                files.forEach(file => {
+                    const opt = document.createElement('option');
+                    opt.value = file;
+                    opt.textContent = file.replace('_tapdata.json', '').replace(/_/g, ' ');
+                    selector.appendChild(opt);
+                });
+            })
+            .catch(err => console.error("Could not load manifest. Check folder structure.", err));
+    });
+
+    selector.onchange = async (e) => {
+        if (!e.target.value) return;
+        const res = await fetch(`image_data/${e.target.value}`);
+        gameData = await res.json();
+        paintedShapes.clear();
+        activeColorIdx = null;
+        hintBtn.disabled = true;
+        
+        // Auto-fit canvas to viewport
+        const vRect = document.getElementById('viewport').getBoundingClientRect();
+        canvas.width = gameData.width;
+        canvas.height = gameData.height;
+        scale = Math.min(vRect.width / canvas.width, vRect.height / canvas.height) * 0.85;
+        posX = 0; posY = 0;
+        
+        updateTransform();
+        renderPalette();
+        render();
+    };
+
+    function renderPalette() {
+        paletteDiv.innerHTML = '';
+        if (!gameData) return;
+        gameData.palette.forEach((rgb, idx) => {
+            const colorIdx = idx + 1;
+            const total = gameData.shapeToColor.filter(c => c === colorIdx).length;
+            let found = 0;
+            gameData.shapeToColor.forEach((c, i) => { if (c === colorIdx && paintedShapes.has(i + 1)) found++; });
+
+            if (found < total) {
+                const swatch = document.createElement('div');
+                swatch.className = 'swatch' + (activeColorIdx === colorIdx ? ' active' : '');
+                swatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+                swatch.onclick = () => { 
+                    activeColorIdx = colorIdx; 
+                    hintBtn.disabled = false;
+                    renderPalette(); 
+                    render(); 
+                };
+                paletteDiv.appendChild(swatch);
+            }
+        });
+    }
+
+    function render() {
+        if (!gameData) return;
+        const imgData = ctx.createImageData(gameData.width, gameData.height);
+        const { map, shapeToColor, palette, width } = gameData;
+        for (let i = 0; i < map.length; i++) {
+            const sid = map[i];
+            const cid = shapeToColor[sid - 1];
+            let r, g, b;
+            if (sid === 0) [r, g, b] = [255, 255, 255];
+            else if (paintedShapes.has(sid)) [r, g, b] = palette[cid - 1];
+            else if (sid === hintShapeId) [r, g, b] = [255, 0, 0];
+            else if (activeColorIdx === cid) {
+                const pat = (Math.floor((i%width)/8) + Math.floor((i/width)/8)) % 2 === 0;
+                [r, g, b] = pat ? [255, 255, 255] : [235, 235, 235];
+            } else [r, g, b] = [248, 248, 248];
+            const p = i * 4; imgData.data[p]=r; imgData.data[p+1]=g; imgData.data[p+2]=b; imgData.data[p+3]=255;
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function updateTransform() { canvas.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
+
+    // Touch Handling
+    let isMoving = false, touches = [], startX, startY;
+    canvas.addEventListener('pointerdown', (e) => {
+        touches.push(e);
+        if (touches.length === 1) {
+            isMoving = false; lastPosX = posX; lastPosY = posY; startX = e.clientX; startY = e.clientY;
+        } else if (touches.length === 2) {
+            startDist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+            lastScale = scale;
+        }
+    });
+    window.addEventListener('pointermove', (e) => {
+        const idx = touches.findIndex(t => t.pointerId === e.pointerId);
+        if (idx > -1) touches[idx] = e;
+        if (touches.length === 1) {
+            const dx = e.clientX - startX, dy = e.clientY - startY;
+            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                isMoving = true; posX = lastPosX + dx; posY = lastPosY + dy; updateTransform();
+            }
+        } else if (touches.length === 2) {
+            isMoving = true;
+            const newDist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+            scale = lastScale * (newDist / startDist); updateTransform();
+        }
+    });
+    window.addEventListener('pointerup', (e) => {
+        if (touches.length === 1 && !isMoving) handleTap(touches[0]);
+        touches = touches.filter(t => t.pointerId !== e.pointerId);
+    });
+
+    function handleTap(e) {
+        if (!gameData || !activeColorIdx) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+        const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+        const sid = gameData.map[y * gameData.width + x];
+        if (sid > 0 && gameData.shapeToColor[sid - 1] === activeColorIdx) {
+            paintedShapes.add(sid); renderPalette(); render();
+        }
+    }
+
+    function giveHint() {
+        if (!activeColorIdx) return;
+        const unpainted = [];
+        gameData.shapeToColor.forEach((cid, idx) => { if (cid === activeColorIdx && !paintedShapes.has(idx+1)) unpainted.push(idx+1); });
+        if (unpainted.length > 0) {
+            hintShapeId = unpainted[Math.floor(Math.random() * unpainted.length)];
+            render(); setTimeout(() => { hintShapeId = null; render(); }, 800);
+        }
+    }
 </script>
 </body>
 </html>
